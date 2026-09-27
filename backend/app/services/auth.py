@@ -1,15 +1,14 @@
 import logging
 from datetime import timedelta
-from typing import Optional
+
+from fastapi import HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import create_access_token, get_password_hash, verify_password
-from app.models import user as user_models
+from app.models.user import User
 from app.schemas.auth import Token
 from app.schemas.user import UserCreate, UserRead
 from app.services.user import UserService
-from fastapi import HTTPException, status
-from pydantic.v1 import EmailStr
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +17,7 @@ class AuthService:
     def __init__(self, session: AsyncSession) -> None:
         self.user_service = UserService(session)
 
-    async def authenticate_user(self, email: str, password: str) -> user_models.User:
+    async def authenticate_user(self, email: str, password: str) -> User:
         user = await self.user_service.get_by_email(email)
         logger.info("Authenticating user %s", email)
         if not user or not verify_password(password, user.hashed_password):
@@ -29,7 +28,7 @@ class AuthService:
         return user
 
     async def register_user(self, payload: UserCreate) -> UserRead:
-        user = await self.user_service.get_by_email(EmailStr(payload.email))
+        user = await self.user_service.get_by_email(payload.email)
         logger.debug("Registering user %s", payload.email)
         if user:
             logger.warning("Registration attempt for existing email %s", payload.email)
@@ -43,9 +42,7 @@ class AuthService:
         )
 
     @staticmethod
-    def generate_token(
-        user_id: int, expires_delta: Optional[timedelta] = None
-    ) -> Token:
+    def generate_token(user_id: int, expires_delta: timedelta | None = None) -> Token:
         logger.debug("Generating token for user_id=%s", user_id)
         token = create_access_token(user_id, expires_delta)
         return Token(access_token=token, token_type="bearer")

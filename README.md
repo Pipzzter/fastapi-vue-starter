@@ -1,126 +1,193 @@
-# FastAPI + Vue Starter Kit
+# FastAPI + Vue Starter
 
-Kick-start fullstack projects with a FastAPI backend, Vue 3 frontend, PostgreSQL via Docker Compose, opinionated tooling, and ready-to-run developer workflows.
+A production-ready fullstack starter kit: a **FastAPI** backend with JWT auth and
+async SQLAlchemy, a **Vue 3 + TypeScript** frontend, **PostgreSQL**, and a
+Docker-first workflow with migrations, linting, tests, and CI wired up.
 
-- Docker-first workflow: `docker compose` spins up the API, Vue frontend, and Postgres.
-- Frontend: Vue 3 + TypeScript + Vite + Pinia + Vue Router with hot module replacement.
-- Database layer: PostgreSQL plus Alembic migrations (see `backend/alembic`) and async SQLAlchemy sessions out of the box.
-- Quality gates: pytest suite (selective pre-commit hook) and formatting via Black/isort/Ruff to keep diffs tidy.
+> Clone it, run one command, and you have a working authenticated API + SPA.
 
-## Project Structure
+## Features
+
+- **FastAPI** with a clean layered architecture (routers → services → models).
+- **JWT authentication** — register, login, and a protected `/me` endpoint using
+  OAuth2 password flow, Argon2 password hashing (`pwdlib`), and `PyJWT`.
+- **Async SQLAlchemy 2.0** (asyncpg) with **Alembic** migrations that run
+  automatically on container start.
+- **Type-safe settings** via `pydantic-settings` — sensible defaults for local
+  dev, environment-driven for staging/production.
+- **CORS**, **request-timing middleware**, and **rate limiting** (`slowapi`) on
+  auth endpoints.
+- **Liveness & readiness** health checks (the readiness probe verifies the DB).
+- **Vue 3 + Vite + Pinia + Vue Router + TypeScript** frontend with an example
+  view that live-checks the backend.
+- **Tooling**: Ruff (lint + format + import sorting), pre-commit hooks, a pytest
+  suite, and a **GitHub Actions CI** pipeline.
+- **Docker Compose** for one-command local development.
+
+## Tech stack
+
+| Layer     | Choices                                                        |
+| --------- | -------------------------------------------------------------- |
+| Backend   | FastAPI, SQLAlchemy 2.0 (async), Alembic, pydantic-settings    |
+| Auth      | PyJWT, pwdlib[argon2], OAuth2 password flow                    |
+| Database  | PostgreSQL (asyncpg at runtime, psycopg2 for migrations)       |
+| Frontend  | Vue 3, TypeScript, Vite, Pinia, Vue Router                     |
+| Tooling   | Ruff, pre-commit, pytest, GitHub Actions                       |
+| Infra     | Docker, Docker Compose, Nginx (production frontend)            |
+
+## Project structure
 
 ```
-├── backend/          # FastAPI application
-├── frontend/         # Vue 3 + Vite application
-├── docker/           # Docker configuration
-│   ├── backend/
-│   │   └── Dockerfile
-│   ├── frontend/
-│   │   ├── Dockerfile
-│   │   └── nginx.conf
-│   ├── docker-compose.yml
-│   └── .dockerignore
-└── scripts/          # Utility scripts
+├── backend/                 # FastAPI application
+│   ├── app/
+│   │   ├── api/v1/routers/   # HTTP routes (auth, user, health)
+│   │   ├── core/             # config, security, logging, limiter
+│   │   ├── db/               # engine, session, declarative base
+│   │   ├── middleware/       # CORS + request timing
+│   │   ├── models/           # SQLAlchemy ORM models
+│   │   ├── schemas/          # Pydantic request/response models
+│   │   ├── services/         # business logic
+│   │   ├── dependencies.py   # shared deps (auth, DB session)
+│   │   └── main.py           # app factory
+│   ├── alembic/              # migrations
+│   └── tests/                # pytest suite
+├── frontend/                # Vue 3 + Vite application
+├── docker/                  # Dockerfiles, compose, nginx, entrypoint
+├── scripts/                 # utility scripts
+├── pyproject.toml           # Ruff + project metadata
+└── .github/workflows/       # CI
 ```
 
-## Setup
+## Quick start (Docker)
 
-### Create & activate virtual environment (backend)
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements-dev.txt
-```
+The fastest path — spins up the API, frontend, and Postgres, and applies
+migrations automatically.
 
-### Install frontend dependencies
-```powershell
-cd frontend
-npm install
-```
-
-### Run Docker services
-If you start for the first time:
-```powershell
+```bash
+cp backend/.env.example backend/.env      # optional: defaults work out of the box
 docker compose -f docker/docker-compose.yml up -d --build
 ```
-Else:
-```powershell
-docker compose -f docker/docker-compose.yml up -d
-```
 
-### Apply database migrations (inside backend container)
-```powershell
-cd docker
-docker compose exec backend /bin/bash
-alembic revision --autogenerate -m "init schema"
+- Frontend: http://localhost:5173
+- API docs (Swagger): http://localhost:8000/api/v1/docs
+- API health: http://localhost:8000/api/v1/health/
+
+Stop with `docker compose -f docker/docker-compose.yml down` (add `-v` to also
+drop the database volume).
+
+## Local development (without Docker)
+
+### Backend
+
+```bash
+python -m venv .venv
+source .venv/bin/activate        # Windows: .\.venv\Scripts\Activate.ps1
+pip install -r requirements-dev.txt
+
+# Start a Postgres for the app (or use the compose "db" service), then:
+cp backend/.env.example backend/.env
+cd backend
 alembic upgrade head
-exit
-```
-
-### Run the app locally (optional)
-```powershell
 uvicorn app.main:app --reload
 ```
 
-Visit `http://localhost:8000/api/v1/health/` to verify the service is responding.
+The app boots with development defaults even without a `.env`, but the database
+endpoints need a reachable Postgres.
 
-### Environment configuration
-Copy `backend/.env.example` to `backend/.env` (and adjust secrets), then ensure Docker uses it by keeping the file in place. For container-specific overrides, duplicate it as `.env.docker` and update `DATABASE_URL=postgresql+psycopg2://postgres:postgres@db:5432/backend_db`.
+### Frontend
 
-## Run tests
-
-### Run tests (inside backend container)
-- Run only a single test file:
-```powershell
-pytest
+```bash
+cd frontend
+cp .env.example .env
+npm install
+npm run dev
 ```
 
+## Environment configuration
 
+All settings live in `backend/.env` (see `backend/.env.example`). Every value has
+a development default in `app/core/config.py`, so the project runs and its tests
+pass with no `.env`. The Postgres connection URL is **derived** from the
+`POSTGRES_*` variables; under Docker Compose, `POSTGRES_SERVER` is overridden to
+the `db` service automatically.
 
-- Run only a single test file:
-```powershell
-pytest tests/services
+> **Production:** set a strong `SECRET_KEY` and `ENVIRONMENT=production`. The app
+> refuses to start in production while the default secret is in place.
+
+## API reference
+
+| Method & path                | Auth   | Description                          |
+| ---------------------------- | ------ | ------------------------------------ |
+| `GET  /api/v1/health/`       | –      | Liveness check                       |
+| `GET  /api/v1/health/ready`  | –      | Readiness check (verifies the DB)    |
+| `POST /api/v1/auth/register` | –      | Register a user, returns a JWT       |
+| `POST /api/v1/auth/token`    | –      | Login (OAuth2 form), returns a JWT   |
+| `GET  /api/v1/auth/me`       | Bearer | Current authenticated user           |
+| `POST /api/v1/user/`         | –      | Create a user                        |
+| `GET  /api/v1/user/`         | Bearer | List users                           |
+
+Example:
+
+```bash
+# Register and capture the token
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"me@example.com","password":"secret","full_name":"Me"}' \
+  | python -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
+
+# Call a protected endpoint
+curl http://localhost:8000/api/v1/auth/me -H "Authorization: Bearer $TOKEN"
 ```
 
+## Tests
 
-## Git hooks: format + lint + tests
-The repository ships a `.pre-commit-config.yaml` that runs formatting (Black/isort/Ruff) on every commit and executes a selective pytest check for changed tests.
+```bash
+cd backend
+pytest                 # full suite (uses in-memory SQLite, no Postgres needed)
+pytest tests/services  # a subset
+```
 
-- Pre-commit local hook: the project uses a local hook entry that runs `python scripts/run_changed_pytest.py` with `pass_filenames: true`.
-- Behavior: pre-commit passes only the changed/staged file paths to the helper; the helper filters to test files (paths containing `tests` and ending in `.py`), prepends the `backend` directory to `PYTHONPATH`, and invokes `pytest` from the repository root. This means only touched test modules are executed automatically during commits, keeping commits fast while still exercising modified tests.
+## Linting, formatting & pre-commit
 
-To install and run hooks locally:
-```powershell
-# install the pre-commit hooks into .git/hooks
+Ruff handles linting, formatting, and import sorting; configuration lives in
+`pyproject.toml`.
+
+```bash
+ruff check backend scripts      # lint
+ruff format backend scripts     # format
+```
+
+Install the git hooks (format + lint on commit, plus pytest for changed test
+files):
+
+```bash
 pre-commit install
-# optionally run all configured hooks against the whole repo (warm-up)
-pre-commit run --all-files
+pre-commit run --all-files      # optional warm-up
 ```
-
-If you want the pre-commit hook to run the full pytest suite instead of only changed files, update `.pre-commit-config.yaml` (remove `pass_filenames: true` or configure the hook to always run) or run `pytest` directly as shown above.
 
 ## Environments & Docker targets
-Set `APP_ENV` to `development`, `staging`, or `production` to pick the matching Docker multi-stage target and application mode. The value is also loaded from `backend/.env` inside containers.
 
-```powershell
-# development (default)
+Set `APP_ENV` to pick the Docker multi-stage target:
+
+```bash
+# development (default) — hot reload, dev dependencies
 docker compose -f docker/docker-compose.yml up -d
 
-# staging build/run
-APP_ENV=staging docker compose -f docker/docker-compose.yml up -d --build
-
-# production build/run
+# staging / production images
 APP_ENV=production docker compose -f docker/docker-compose.yml up -d --build
 ```
 
-## Access the application
-- Frontend: `http://localhost:5173`
-- Backend API: `http://localhost:8000`
-- API Health: `http://localhost:8000/api/v1/health/`
+The frontend Compose service always runs the Vite dev server; the `production`
+frontend stage builds a static bundle served by Nginx and is intended for your
+deployment pipeline rather than local Compose.
 
-## API quick reference
-- `GET /api/v1/health/` – service heartbeat (returns status/timestamp)
-- `POST /api/v1/user/` – create user (requires JSON payload matching `UserCreate`)
-- `GET /api/v1/user/` – list users
-- `POST /api/v1/auth/register` – register user & receive JWT
-- `POST /api/v1/auth/token` – obtain JWT via credentials form
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request:
+
+- **Backend** — Ruff lint, Ruff format check, and pytest.
+- **Frontend** — ESLint, `vue-tsc` type-check, and a production build.
+
+## License
+
+[MIT](LICENSE)

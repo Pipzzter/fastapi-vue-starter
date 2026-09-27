@@ -1,0 +1,7 @@
+# Normalize line endings. Shell scripts must stay LF so they run inside Linux
+# containers even when checked out on Windows.
+* text=auto eol=lf
+*.sh text eol=lf
+*.png binary
+*.jpg binary
+*.ico binary

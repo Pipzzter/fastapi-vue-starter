@@ -1,9 +1,9 @@
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+
 from app.schemas.user import UserCreate
 from app.services.user import UserService
-from pydantic.v1 import EmailStr
 
 pytestmark = pytest.mark.asyncio
 
@@ -45,7 +45,7 @@ async def test_get_by_email_handles_missing_user(mock_user_repository):
 
 async def test_create_user_hashes_password(monkeypatch, mock_user_repository):
     service = UserService(mock_user_repository)
-    payload = UserCreate(email=EmailStr("hash@example.com"), password="secret")
+    payload = UserCreate(email="hash@example.com", password="secret")
     fake_hash = "hashed-secret"
     monkeypatch.setattr("app.services.user.get_password_hash", lambda _: fake_hash)
 
@@ -68,7 +68,7 @@ async def test_create_user_hashes_password(monkeypatch, mock_user_repository):
 
 async def test_create_user_respects_provided_hash(monkeypatch, mock_user_repository):
     service = UserService(mock_user_repository)
-    payload = UserCreate(email=EmailStr("hash@example.com"), password="secret")
+    payload = UserCreate(email="hash@example.com", password="secret")
     monkeypatch.setattr(
         "app.services.user.get_password_hash",
         lambda _: (_ for _ in ()).throw(RuntimeError("should not hash")),

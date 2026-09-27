@@ -1,8 +1,9 @@
 from typing import cast
 
 import pytest
-from app.schemas.user import UserCreate, UserLogin, UserRead
 from pydantic import EmailStr, ValidationError
+
+from app.schemas.user import UserCreate, UserLogin, UserRead
 
 
 class _UserRecord:

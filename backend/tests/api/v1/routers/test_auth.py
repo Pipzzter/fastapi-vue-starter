@@ -45,3 +45,18 @@ async def test_login_router(async_client, mock_auth_service):
         "auth@example.com", "secret"
     )
     mock_auth_service.generate_token.assert_called_once_with(2)
+
+
+@pytest.mark.asyncio
+async def test_read_current_user(async_client, current_user):
+    response = await async_client.get("/api/v1/auth/me")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["email"] == current_user.email
+
+
+@pytest.mark.asyncio
+async def test_read_current_user_requires_auth(async_client):
+    response = await async_client.get("/api/v1/auth/me")
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED

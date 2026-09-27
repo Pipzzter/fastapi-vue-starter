@@ -16,3 +16,11 @@ async def test_health_check_router(async_client: AsyncClient, mock_health_servic
     assert response.json()["status"] == "ok"
     assert "timestamp" in response.json()
     mock_health_service.get_status.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_readiness_check_router(async_client: AsyncClient):
+    response = await async_client.get("/api/v1/health/ready")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {"status": "ready"}

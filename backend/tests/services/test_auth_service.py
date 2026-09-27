@@ -1,9 +1,10 @@
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from fastapi import HTTPException, status
+
 from app.schemas.user import UserCreate
 from app.services.auth import AuthService
-from fastapi import HTTPException, status
 
 pytestmark = pytest.mark.asyncio
 

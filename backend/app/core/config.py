@@ -1,73 +1,114 @@
-import os
-from dataclasses import dataclass, field
+"""Application settings, loaded from the environment via pydantic-settings.
+
+All non-secret fields ship with development-friendly defaults so the project
+runs (and its tests pass) straight after ``git clone`` with no ``.env`` file.
+Secrets such as ``SECRET_KEY`` must be overridden in production; ``get_settings``
+enforces that.
+"""
+
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated, Any
 
-from dotenv import load_dotenv
+from pydantic import AliasChoices, BeforeValidator, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-load_dotenv(BASE_DIR / ".env")
+
+_DEFAULT_SECRET_KEY = "change-me-in-production-use-a-long-random-string"
 
 
-def _env_required(name: str) -> str:
-    value = os.getenv(name)
-    if value is None:
-        raise RuntimeError(f"Missing required environment variable '{name}'")
-    return value
+def _parse_cors(value: Any) -> Any:
+    """Accept either a JSON list or a comma-separated string for CORS origins."""
+    if isinstance(value, str) and not value.startswith("["):
+        return [origin.strip() for origin in value.split(",") if origin.strip()]
+    if isinstance(value, (list, str)):
+        return value
+    raise ValueError(value)
 
 
-def _env_required_int(name: str) -> int:
-    raw_value = _env_required(name)
-    try:
-        return int(raw_value)
-    except ValueError as exc:
-        raise RuntimeError(f"Environment variable '{name}' must be an integer") from exc
-
-
-def _env_optional(name: str) -> str | None:
-    value = os.getenv(name)
-    return value if value not in (None, "") else None
-
-
-@dataclass(frozen=True)
-class Settings:
-    app_name: str = field(default_factory=lambda: _env_required("APP_NAME"))
-    environment: str = field(default_factory=lambda: _env_required("ENVIRONMENT"))
-    api_v1_prefix: str = field(default_factory=lambda: _env_required("API_V1_PREFIX"))
-    database_url: str = field(default_factory=lambda: _env_required("DATABASE_URL"))
-    postgres_server: str = field(
-        default_factory=lambda: _env_required("POSTGRES_SERVER")
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=BASE_DIR / ".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
     )
-    postgres_port: int = field(
-        default_factory=lambda: _env_required_int("POSTGRES_PORT")
-    )
-    postgres_db: str = field(default_factory=lambda: _env_required("POSTGRES_DB"))
-    postgres_user: str = field(default_factory=lambda: _env_required("POSTGRES_USER"))
-    postgres_password: str = field(
-        default_factory=lambda: _env_required("POSTGRES_PASSWORD")
-    )
-    redis_url: str = field(default_factory=lambda: _env_required("REDIS_URL"))
-    secret_key: str = field(default_factory=lambda: _env_required("SECRET_KEY"))
-    access_token_expire_minutes: int = field(
-        default_factory=lambda: _env_required_int("ACCESS_TOKEN_EXPIRE_MINUTES")
-    )
-    jwt_algorithm: str = field(default_factory=lambda: _env_required("JWT_ALGORITHM"))
-    email_from: str = field(default_factory=lambda: _env_required("EMAIL_FROM"))
-    smtp_host: str = field(default_factory=lambda: _env_required("SMTP_HOST"))
-    smtp_port: int = field(default_factory=lambda: _env_required_int("SMTP_PORT"))
-    smtp_user: str | None = field(default_factory=lambda: _env_optional("SMTP_USER"))
-    smtp_password: str | None = field(
-        default_factory=lambda: _env_optional("SMTP_PASSWORD")
-    )
-    log_level: str = field(default_factory=lambda: _env_optional("LOG_LEVEL") or "INFO")
 
+    # --- Application ---
+    app_name: str = "FastAPI Vue Starter"
+    environment: str = "development"
+    api_v1_prefix: str = "/api/v1"
+    log_level: str = "INFO"
+    backend_cors_origins: Annotated[list[str] | str, BeforeValidator(_parse_cors)] = [
+        "http://localhost:5173",
+        "http://localhost:8000",
+    ]
 
-@lru_cache
-def get_settings() -> Settings:
-    return Settings()
+    # --- Database ---
+    # The runtime (async) and Alembic (sync) URLs are derived from these fields.
+    # Under Docker Compose, POSTGRES_SERVER is overridden to the ``db`` service.
+    postgres_server: str = "localhost"
+    postgres_port: int = 5432
+    postgres_db: str = "backend_db"
+    postgres_user: str = "postgres"
+    postgres_password: str = "postgres"
+    # Optional escape hatch: set DATABASE_URL to override the derived URL entirely
+    # (useful on hosts such as Render/Railway/Heroku that inject a single URL).
+    database_url_override: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("DATABASE_URL", "database_url_override"),
+    )
+
+    # --- Cache / broker (optional) ---
+    redis_url: str = "redis://localhost:6379/0"
+
+    # --- Security / JWT ---
+    secret_key: str = _DEFAULT_SECRET_KEY
+    access_token_expire_minutes: int = 30
+    jwt_algorithm: str = "HS256"
+
+    # --- Email (optional) ---
+    email_from: str = "noreply@example.com"
+    smtp_host: str = "localhost"
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+
+    @property
+    def database_url(self) -> str:
+        """Synchronous (psycopg2) URL — used by Alembic migrations."""
+        if self.database_url_override:
+            return self.database_url_override
+        return (
+            f"postgresql+psycopg2://{self.postgres_user}:{self.postgres_password}"
+            f"@{self.postgres_server}:{self.postgres_port}/{self.postgres_db}"
+        )
+
+    @property
+    def async_database_url(self) -> str:
+        """Async (asyncpg) URL — used by the application at runtime."""
+        return get_async_database_url(self.database_url)
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.lower() == "production"
 
 
 def get_async_database_url(database_url: str) -> str:
     if database_url.startswith("postgresql+psycopg2"):
         return database_url.replace("psycopg2", "asyncpg", 1)
+    if database_url.startswith("postgresql://"):
+        return database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
     return database_url
+
+
+@lru_cache
+def get_settings() -> Settings:
+    settings = Settings()
+    if settings.is_production and settings.secret_key == _DEFAULT_SECRET_KEY:
+        raise RuntimeError(
+            "SECRET_KEY must be set to a strong, unique value when "
+            "ENVIRONMENT=production."
+        )
+    return settings

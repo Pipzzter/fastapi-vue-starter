@@ -1,5 +1,12 @@
+# Development & test dependencies. Installs runtime deps too.
 -r requirements.txt
-pre-commit
-black
-isort
-ruff
+
+# Testing
+pytest==9.1.1
+pytest-asyncio==1.4.0
+aiosqlite==0.22.1
+httpx==0.28.1
+
+# Lint / format / git hooks (Ruff replaces black + isort + flake8)
+ruff==0.16.9
+pre-commit==4.6.2

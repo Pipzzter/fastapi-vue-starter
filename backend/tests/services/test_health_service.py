@@ -1,4 +1,5 @@
 import pytest
+
 from app.services.health import HealthService
 
 pytestmark = pytest.mark.asyncio

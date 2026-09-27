@@ -4,11 +4,13 @@ services:
       context: ..
       dockerfile: docker/backend/Dockerfile
       target: ${APP_ENV:-development}
-    container_name: backend
+    container_name: fastapi-vue-starter-backend
     env_file:
       - ../backend/.env
     environment:
       - APP_ENV=${APP_ENV:-development}
+      # Inside the compose network the database is reachable as "db", not localhost.
+      - POSTGRES_SERVER=db
     ports:
       - "8000:8000"
     depends_on:
@@ -16,13 +18,21 @@ services:
         condition: service_healthy
     volumes:
       - ../backend:/app
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/')\""
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   frontend:
     build:
       context: ..
       dockerfile: docker/frontend/Dockerfile
-      target: ${APP_ENV:-development}
-    container_name: frontend
+      target: development
+    container_name: fastapi-vue-starter-frontend
     ports:
       - "5173:5173"
     volumes:
@@ -34,17 +44,17 @@ services:
       - VITE_API_URL=http://localhost:8000
 
   db:
-    image: postgres:latest
-    container_name: postgres
+    image: postgres:17-alpine
+    container_name: fastapi-vue-starter-db
     restart: unless-stopped
     env_file:
       - ../backend/.env
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "postgres"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres}"]
       interval: 5s
       timeout: 5s
       retries: 5

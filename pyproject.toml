@@ -1,0 +1,24 @@
+[project]
+name = "fastapi-vue-starter"
+version = "0.1.0"
+description = "A production-ready FastAPI + Vue 3 starter kit with PostgreSQL, JWT auth, Docker, and CI."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+src = ["backend", "scripts"]
+extend-exclude = ["backend/alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "C4", "UP"]
+# B008: FastAPI relies on function calls (Depends(), Query()) in argument defaults.
+ignore = ["B008"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.lint.per-file-ignores]
+"backend/tests/**" = ["E501"]
